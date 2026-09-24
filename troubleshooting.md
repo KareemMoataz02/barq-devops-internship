@@ -300,3 +300,25 @@ ls -lZ nginx/nginx.conf database/init.sql
   commits, but rotating it invalidated that value. Rewriting the supplied progressive
   history would conflict with the assessment's requirement to preserve that history.
 - Related commit: `security: keep runtime credentials out of source and logs`.
+
+## 2026-09-24 — enforce frontend and backend network isolation
+
+- Security findings: the submitted Compose file published PostgreSQL on host port
+  15432 and Redis on host port 16379. NGINX also joined the backend network, giving
+  the public edge container unnecessary access to both data services.
+- Focused change: remove the PostgreSQL and Redis host port mappings and attach
+  NGINX only to the frontend network. Keep both apps on frontend and backend, and
+  keep PostgreSQL and Redis only on the internal backend network.
+- Static validation: the rendered base Compose model showed only NGINX publishing a
+  port (`127.0.0.1:8080`), NGINX on frontend, both apps on frontend and backend, and
+  PostgreSQL and Redis on backend. Compose syntax and whitespace checks passed.
+- Runtime isolation proof: container inspection showed no published ports for either
+  app or data service. NGINX had only the frontend network and could not resolve the
+  `postgres` service name, while app-01 resolved both `postgres` and `redis` through
+  the backend network.
+- Functional validation: public `/ready` returned HTTP 200 with both dependencies
+  ready. After the fresh NGINX start, the first four `/instance` requests selected
+  app-01; a 100-request sample then returned 51 app-01 and 49 app-02 responses,
+  confirming that both frontend paths remained available and balanced.
+- Failed repair attempts: none in this step.
+- Related commit: `security: isolate data services on the backend network`.

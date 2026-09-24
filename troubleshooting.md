@@ -137,3 +137,43 @@ docker inspect barq-guided-app-01 barq-guided-app-02 \
 - Remaining issues: NGINX/PostgreSQL mounted-file access and other starter
   configuration defects have not been repaired.
 - Related commit: `fix: use the implemented application health endpoint`.
+
+## 2026-09-24 16:58 UTC — allow containers to read bind-mounted files
+
+- Symptom before the change: NGINX exited because it could not open
+  `/etc/nginx/nginx.conf`; PostgreSQL exited because it could not read
+  `/docker-entrypoint-initdb.d/01-init.sql`.
+- Hypothesis: SELinux enforcement blocked both bind mounts because the host files
+  had `user_home_t` labels and the Compose mounts requested read-only access without
+  container relabeling.
+- Focused change: add `Z` to the two read-only bind-mount modes (`ro,Z`). `Z` gives
+  each bind mount a private container SELinux label while preserving read-only access.
+- Validation commands:
+
+```bash
+docker compose -p barq-guided -f docker-compose.yml \
+  -f evidence/local/guided-baseline/diagnostic.override.yml config --quiet
+
+docker compose -p barq-guided -f docker-compose.yml \
+  -f evidence/local/guided-baseline/diagnostic.override.yml \
+  up -d --force-recreate postgres nginx
+
+docker inspect barq-guided-nginx barq-guided-postgres
+docker exec barq-guided-nginx nginx -t
+ls -lZ nginx/nginx.conf database/init.sql
+```
+
+- Actual result: NGINX remained running with exit code 0 and `nginx -t` passed.
+  PostgreSQL remained running, became healthy, executed `01-init.sql`, created the
+  records table, inserted two starter rows, and accepted connections. Both host
+  files changed to `container_file_t` labels with private MCS categories.
+- Confirmed root cause: missing container-compatible SELinux labels caused both
+  permission failures. The focused relabeling removed those failures.
+- Failed repair attempts: none in this step.
+- Negative retest: public `/` and `/health` still reset the connection. Docker maps
+  host port 8080 to container port 81, while NGINX configuration listens on port 80.
+  Therefore this commit does not claim to restore public access.
+- Persistence limitation observed: PostgreSQL still stores its active data directory
+  on tmpfs while the named volume targets `/var/lib/postgresql/backup`. Persistence
+  remains unproven and is not fixed here.
+- Related commit: `fix: label bind mounts for SELinux containers`.

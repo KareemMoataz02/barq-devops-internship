@@ -269,3 +269,34 @@ ls -lZ nginx/nginx.conf database/init.sql
   file, and application startup logging currently emits complete connection URLs.
   Those risks remain for a separate security-focused change.
 - Related commit: `fix: correct dependency connection settings`.
+
+## 2026-09-24 — remove credentials from tracked files and logs
+
+- Security findings: the database credential appeared in `docker-compose.yml` and
+  `config/app.env`; the Dockerfile copied that environment file into the image; and
+  application startup logs emitted complete PostgreSQL and Redis URLs.
+- Focused change: use Compose interpolation from an ignored root `.env`, add safe
+  variable names and placeholder values to `.env.example`, remove `config/app.env`,
+  stop copying it into the image, and log only boolean configured states.
+- Credential response: generate a new local database password, update the ignored
+  `.env`, alter the PostgreSQL role to use it, and recreate both app containers. The
+  replacement credential was not printed or added to Git.
+- Static validation: Compose rendered successfully, `.env` was confirmed ignored,
+  the focused diff passed whitespace checks, and a current-tree scan found zero
+  matches for the removed lab credential or full-URL startup log statements.
+- Image validation: both app images rebuilt successfully, and inspection of `/srv`
+  in the rebuilt image found no environment file.
+- Application validation: all eight contract tests passed inside the application
+  image. Both recreated apps became healthy and public `/ready` returned HTTP 200
+  with PostgreSQL and Redis ready after credential rotation. Startup logs contain
+  only `database_configured=true` and `redis_configured=true`.
+- Failed validation attempt: running the unit suite with the host Python failed at
+  import time because the host lacked the declared `psycopg` package. Running the
+  same suite inside the project image supplied the declared dependencies and passed.
+- Failed edit attempt: the first `apply_patch` request used content lines with the
+  delete-file directive, which that patch format rejects. It made no filesystem
+  change; the corrected delete-file directive then removed `config/app.env`.
+- Historical limitation: the former lab credential remains visible in earlier Git
+  commits, but rotating it invalidated that value. Rewriting the supplied progressive
+  history would conflict with the assessment's requirement to preserve that history.
+- Related commit: `security: keep runtime credentials out of source and logs`.

@@ -223,3 +223,20 @@ ls -lZ nginx/nginx.conf database/init.sql
   `INSTANCE_ID`; that identity defect remains for a separate focused repair.
 - Failed repair attempts: none in this step.
 - Related commit: `fix: expose app listeners to the frontend network`.
+
+## 2026-09-24 — give app-02 a distinct instance identity
+
+- Symptom before the change: NGINX logs showed requests reaching both application
+  container IP addresses, but every `/instance` response reported `app-01`.
+- Confirmed cause: the Compose service definitions assigned `INSTANCE_ID=app-01`
+  to both app-01 and app-02.
+- Focused change: set app-02's `INSTANCE_ID` to `app-02` and recreate only that
+  application container.
+- Validation: Compose syntax passed, app-02 became healthy within the 45-second
+  bounded check, and twelve public `/instance` requests succeeded through NGINX.
+- Actual result: the responses alternated evenly between `app-01` and `app-02`,
+  with six responses from each identity.
+- Confirmed result: the public endpoint now demonstrates two distinct application
+  instances and NGINX round-robin load balancing.
+- Failed repair attempts: none in this step.
+- Related commit: `fix: give app-02 a distinct instance identity`.

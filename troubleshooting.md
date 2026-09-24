@@ -201,3 +201,25 @@ ls -lZ nginx/nginx.conf database/init.sql
 - Scope of proof: host-to-NGINX connectivity is restored. No successful response has
   yet passed from NGINX to an app.
 - Related commit: `fix: publish the active NGINX listener`.
+
+## 2026-09-24 — expose application listeners to NGINX
+
+- Symptom before the change: public requests reached NGINX but returned HTTP 502.
+  Connection probes from the NGINX container to both application services failed.
+- Confirmed causes: the shared application configuration bound Flask to
+  `127.0.0.1`, which accepts traffic only from inside its own container. NGINX also
+  targeted app-01 on port 8081 even though both applications use port 8080.
+- Focused change: bind the applications to `0.0.0.0` and target app-01 on port 8080.
+- Validation: Compose syntax passed and app-01, app-02, and NGINX were recreated.
+  Both application containers became healthy within the 45-second bounded check.
+  TCP probes from NGINX reached `app-01:8080` and `app-02:8080` successfully.
+- Actual HTTP result: six public `/health` requests returned HTTP 200. Four public
+  `/instance` requests also returned HTTP 200, and the NGINX access log showed that
+  requests reached both application container IP addresses.
+- Confirmed result: the public request path now works from host port 8080 through
+  NGINX to both application containers.
+- Newly isolated issue: every `/instance` response reports `app-01`, including the
+  response served by app-02's container IP. The app-02 service has a duplicate
+  `INSTANCE_ID`; that identity defect remains for a separate focused repair.
+- Failed repair attempts: none in this step.
+- Related commit: `fix: expose app listeners to the frontend network`.

@@ -398,3 +398,24 @@ ls -lZ nginx/nginx.conf database/init.sql
   ready, and the PostgreSQL persistence marker remained present after the cold start.
 - Failed repair attempts: none in this step.
 - Related commit: `reliability: gate startup on service health`.
+
+## 2026-09-24 — bound container resource consumption
+
+- Resource finding: runtime inspection reported zero CPU and memory limits and no PID
+  limit for every service, allowing a single faulty container to consume the host.
+- Focused change: limit each app to 0.50 CPU, 256 MiB, and 128 PIDs; PostgreSQL to
+  0.75 CPU, 512 MiB, and 256 PIDs; and Redis and NGINX each to 0.25 CPU, 128 MiB,
+  and 128 PIDs.
+- Static validation: Compose syntax and whitespace checks passed. The rendered model
+  converted the requested limits to the expected CPU fractions, byte counts, and PID
+  counts for all five services.
+- Runtime validation: force-recreate the complete stack with the 60-second health
+  wait. All five services became healthy. Docker inspection reported the exact CPU,
+  memory, and PID limits requested for each container.
+- Observed headroom: the no-load snapshot showed PostgreSQL using about 19 MiB,
+  Redis 4 MiB, app-01 97 MiB, app-02 90 MiB, and NGINX 8 MiB, all below their
+  configured memory ceilings. Process counts ranged from 6 to 9, also below limits.
+- Functional validation: public `/ready` returned HTTP 200 with both dependencies
+  ready, and the PostgreSQL persistence marker remained present after recreation.
+- Failed repair attempts: none in this step.
+- Related commit: `reliability: set container resource limits`.

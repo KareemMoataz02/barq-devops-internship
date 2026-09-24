@@ -104,3 +104,36 @@ docker exec barq-guided-app-01 python -c \
 - There is no CI workflow in the supplied starter; adding one is a later task.
 - Local command output is in `evidence/local/guided-baseline/`.
 - Related commit: `docs: record baseline startup and health-check failures`.
+
+## 2026-09-24T16:55:54.774627+00:00 — correct the application health probe
+
+- Symptom before the change: both diagnostic app containers were running but
+  unhealthy; the configured `/healthz` endpoint returned 404.
+- Change: replace `/healthz` with the implemented `/health` endpoint in the shared
+  Compose app healthcheck. The anchor applies this one-line fix to both app services.
+- Validation: Compose syntax passed. Recreate only the two app containers using
+  the same diagnostic override; use `--no-deps` to leave other services untouched.
+
+```bash
+docker compose -p barq-guided -f docker-compose.yml \
+  -f evidence/local/guided-baseline/diagnostic.override.yml config --quiet
+
+docker compose -p barq-guided -f docker-compose.yml \
+  -f evidence/local/guided-baseline/diagnostic.override.yml up -d --no-deps app-01 app-02
+
+docker inspect barq-guided-app-01 barq-guided-app-02 \
+  --format '{{.Name}} {{.State.Status}} {{.State.Health.Status}}'
+```
+
+- Actual result: both containers changed from unhealthy to healthy. Their latest
+  health probes returned exit 0. A bounded health-state check used a 45-second limit.
+- Confirmed cause and fix: the healthcheck path was incorrect; correcting only that
+  path restored both app health states.
+- Failed repair attempts: none in this step.
+- Evidence: `evidence/local/guided-baseline/healthcheck-retest.json` contains the
+  inspection timestamp, actual probe commands, states, and exit codes.
+- Scope of proof: the application processes respond to local liveness probes.
+  This does not prove NGINX connectivity, dependency readiness, or persistence.
+- Remaining issues: NGINX/PostgreSQL mounted-file access and other starter
+  configuration defects have not been repaired.
+- Related commit: `fix: use the implemented application health endpoint`.

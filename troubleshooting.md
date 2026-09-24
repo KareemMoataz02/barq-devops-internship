@@ -240,3 +240,32 @@ ls -lZ nginx/nginx.conf database/init.sql
   instances and NGINX round-robin load balancing.
 - Failed repair attempts: none in this step.
 - Related commit: `fix: give app-02 a distinct instance identity`.
+
+## 2026-09-24 — restore PostgreSQL and Redis readiness
+
+- Symptom before the change: `/ready` returned HTTP 503 and reported both PostgreSQL
+  and Redis unavailable.
+- Initial evidence: the app connection URLs used PostgreSQL port 5433 and Redis port
+  6380. Direct probes from app-01 proved the services were reachable on their actual
+  internal ports, PostgreSQL 5432 and Redis 6379.
+- First focused change: correct both internal ports in `config/app.env` and recreate
+  the two application containers.
+- Intermediate result: Redis became ready and `/counter` returned HTTP 200, but
+  PostgreSQL remained unavailable and `/records` still returned HTTP 503.
+- Follow-up evidence: a redacted comparison of the running environments showed that
+  the database name and username matched, while the app and PostgreSQL passwords did
+  not. No credential value was printed during that comparison.
+- Second focused change: align the app's database URL with PostgreSQL's configured
+  credential and recreate the two application containers.
+- Final validation: both apps became healthy within the bounded wait; `/ready`
+  returned HTTP 200 with both dependencies ready; `/records` returned the two seeded
+  rows; and two `/counter` requests returned HTTP 200 and advanced the shared count
+  from 3 to 4 across app-01 and app-02.
+- Failed validation attempt: the first endpoint loop used zsh's reserved `path`
+  variable, which temporarily hid executable lookup and exited 127 before making the
+  requests. Renaming the loop variable to `endpoint` fixed the test command; no
+  application change was made in response to that shell error.
+- Remaining security issue: a credential is still stored in a tracked environment
+  file, and application startup logging currently emits complete connection URLs.
+  Those risks remain for a separate security-focused change.
+- Related commit: `fix: correct dependency connection settings`.

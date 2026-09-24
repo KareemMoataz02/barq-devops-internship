@@ -372,3 +372,29 @@ ls -lZ nginx/nginx.conf database/init.sql
   `rm -rf` before execution. Python's temporary-directory lifecycle provided bounded
   cleanup instead; no repository or test change resulted from the rejection.
 - Related commit: `security: run apps as non-root with Gunicorn`.
+
+## 2026-09-24 — add health-gated startup and automatic recovery
+
+- Lifecycle findings: the apps used `restart: no`, the other services had no restart
+  policy, apps had no dependency gates, NGINX waited only for containers to start,
+  and NGINX had no health check. PostgreSQL's probe also hardcoded the default user
+  and database even though both values are configurable.
+- Focused change: apply `restart: unless-stopped` to all five services; wait for
+  healthy PostgreSQL and Redis before starting the apps; wait for both healthy apps
+  before starting NGINX; add an NGINX `/health` probe; and read PostgreSQL probe
+  values from its runtime environment.
+- Static validation: Compose syntax and whitespace checks passed. The rendered model
+  showed the two service-health dependency levels, a health check for every service,
+  and `unless-stopped` for all five services.
+- Cold-start proof: bring down all guided-project containers without deleting named
+  volumes, then start with Compose's 60-second health wait. PostgreSQL and Redis
+  became healthy first, both apps started and became healthy next, NGINX started
+  last, and all services reached healthy state in about 19 seconds.
+- Recovery proof: send SIGTERM to app-01 PID 1 from inside the container. Docker
+  increased its restart count from 0 to 1 and returned the service to healthy within
+  the bounded 45-second check.
+- Functional validation: all five services reported running and healthy with the
+  expected restart policy, public `/ready` returned HTTP 200 with both dependencies
+  ready, and the PostgreSQL persistence marker remained present after the cold start.
+- Failed repair attempts: none in this step.
+- Related commit: `reliability: gate startup on service health`.

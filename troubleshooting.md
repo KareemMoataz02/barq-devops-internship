@@ -177,3 +177,27 @@ ls -lZ nginx/nginx.conf database/init.sql
   on tmpfs while the named volume targets `/var/lib/postgresql/backup`. Persistence
   remains unproven and is not fixed here.
 - Related commit: `fix: label bind mounts for SELinux containers`.
+
+## 2026-09-24 — align the published port with the NGINX listener
+
+- Symptom before the change: the host connection reached Docker port 8080 but reset;
+  inspection showed host 8080 forwarded to container port 81, while the supplied
+  NGINX configuration listens on container port 80.
+- Hypothesis: the published container port does not have a listening process.
+- Focused change: map `127.0.0.1:${PUBLIC_PORT:-8080}` to NGINX container port 80.
+  Keep the host binding on loopback and retain the required preparation port 8080.
+- Validation: Compose syntax passed; only NGINX was force-recreated. `docker port`
+  then reported `80/tcp -> 127.0.0.1:8080`, and NGINX remained running with exit 0.
+- Actual HTTP result: six bounded requests to the public `/health` URL all reached
+  NGINX and returned HTTP 502. Before this change the same URL reset the connection.
+- Confirmed cause and fix: the incorrect published target port prevented the host
+  from reaching NGINX; mapping to its real listener restored the public edge path.
+- New evidence from the next hop: connection probes from NGINX to `app-01:8080`,
+  `app-01:8081`, and `app-02:8080` all failed. Both app environments currently set
+  `APP_HOST=127.0.0.1`, so their processes accept only same-container connections.
+  NGINX also configures app-01 on port 8081 while the app uses port 8080.
+- Failed repair attempts: none in this step. The 502 responses are a separate upstream
+  defect revealed after the edge port began working, not failure of the port fix.
+- Scope of proof: host-to-NGINX connectivity is restored. No successful response has
+  yet passed from NGINX to an app.
+- Related commit: `fix: publish the active NGINX listener`.

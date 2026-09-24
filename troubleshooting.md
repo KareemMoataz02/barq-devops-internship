@@ -322,3 +322,26 @@ ls -lZ nginx/nginx.conf database/init.sql
   confirming that both frontend paths remained available and balanced.
 - Failed repair attempts: none in this step.
 - Related commit: `security: isolate data services on the backend network`.
+
+## 2026-09-24 — persist PostgreSQL and Redis data
+
+- Persistence findings: PostgreSQL reported `/var/lib/postgresql/data` as its active
+  data directory, but Compose placed that directory on tmpfs and mounted the named
+  volume at the unused `/var/lib/postgresql/backup` path. Redis explicitly disabled
+  snapshots and AOF and used only an anonymous image-created `/data` volume.
+- Focused change: mount `postgres-data` at `/var/lib/postgresql/data` and remove the
+  tmpfs. Enable Redis AOF with `appendfsync everysec`, mount a new named `redis-data`
+  volume at `/data`, and declare that volume in Compose.
+- Initial validation: Compose rendered both named volumes at their active data paths.
+  PostgreSQL and Redis were recreated, became healthy, public `/ready` returned HTTP
+  200, and Redis reported `appendonly=yes`.
+- Persistence test data: create PostgreSQL record ID 3 with title
+  `persistence-proof-20260924`, advance the Redis counter to 1, and use `WAITAOF` to
+  confirm one local AOF write before replacement.
+- Replacement proof: force-recreate both PostgreSQL and Redis, then wait for both
+  health checks. `/records` still returned record ID 3, `/counter` continued from 1
+  to 2, and `/ready` returned HTTP 200 with both dependencies ready.
+- Mount proof: runtime inspection showed `barq-guided_postgres-data` mounted at
+  `/var/lib/postgresql/data` and `barq-guided_redis-data` mounted at `/data`.
+- Failed repair attempts: none in this step.
+- Related commit: `fix: persist PostgreSQL and Redis data`.

@@ -32,7 +32,7 @@ internet-facing production traffic.
 - **Choice:** Each service has a bounded health check. Applications probe their actual
   `/health` route, PostgreSQL uses `pg_isready`, Redis uses `PING`, and NGINX calls the
   proxied health route. Compose starts applications only after both data services are
-  healthy, then starts NGINX after both applications are healthy.
+  healthy, then starts NGINX after all three applications are healthy.
 - **Why:** Process existence alone does not prove that a service can answer its expected
   protocol. Health-gated dependencies prevent the predictable startup race in which an
   application begins before PostgreSQL or Redis can accept requests.
@@ -51,7 +51,7 @@ internet-facing production traffic.
 
 ## 3. Expose one loopback entry point and separate frontend from data traffic
 
-- **Choice:** Publish only NGINX, bound to `127.0.0.1:${PUBLIC_PORT:-8080}`. NGINX and the
+- **Choice:** Publish only NGINX, bound to `127.0.0.1:${PUBLIC_PORT:-8090}`. NGINX and the
   applications share `frontend`; the applications, PostgreSQL, and Redis share an
   `internal: true` `backend` network. NGINX cannot join the backend network, and the data
   services publish no host ports.
@@ -63,8 +63,8 @@ internet-facing production traffic.
   service could then resolve and reach every other service. Publishing database ports
   would simplify desktop debugging at the cost of a larger attack surface.
 - **Trade-off and limit:** This is network segmentation, not strong workload isolation;
-  both applications still hold credentials and can reach both data services. One NGINX
-  container and one Docker host remain single points of failure.
+  all application replicas still hold credentials and can reach both data services. One
+  NGINX container and one Docker host remain single points of failure.
 - **Evidence / commits:** `96943d8` (`fix: expose app listeners to the frontend network`)
   and `b243d59` (`security: isolate data services on the backend network`).
 - **Production improvement:** Place replicas across hosts or availability zones behind a
@@ -79,7 +79,8 @@ internet-facing production traffic.
   failure counts.
 - **Why:** Bounded waits prevent a failed upstream from holding a client connection
   indefinitely. Disabling retry makes the failure experiment show the availability of the
-  configured round-robin design directly: when one of two replicas is stopped, requests
+  configured round-robin design directly. The recorded failure test used the two-replica
+  starting topology: when one replica was stopped, requests
   assigned to it fail instead of being hidden by a second attempt.
 - **Alternative considered:** Retry connection failures and idempotent requests on the
   other upstream. That would improve apparent availability but could hide a broken
@@ -163,8 +164,8 @@ internet-facing production traffic.
 ## 8. Make validation broad, bounded, and scoped to one Compose project
 
 - **Choice:** `validate.py` discovers services through exact Compose labels and checks
-  health, network membership, port isolation, public endpoints, both application
-  identities, PostgreSQL-backed record creation, and the Redis counter. Destructive
+  health, network membership, port isolation, public endpoints, every application
+  identity, PostgreSQL-backed record creation, and the Redis counter. Destructive
   failure and recovery testing is separate and restores the selected replica in a
   `finally` path. CI builds the same images, runs contract tests, starts the full stack,
   and executes end-to-end validation with time limits and cleanup.
@@ -196,5 +197,5 @@ internet-facing production traffic.
   not approved production backup storage.
 - Application requests are modest and mainly I/O-bound. No performance target is claimed
   without load-test evidence.
-- PostgreSQL, Redis, NGINX, and both application replicas share one host. Their container
-  redundancy does not survive loss of that host.
+- PostgreSQL, Redis, NGINX, and all three application replicas share one host. Their
+  container redundancy does not survive loss of that host.

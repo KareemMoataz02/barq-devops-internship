@@ -128,7 +128,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Stop one BARQ backend and prove recovery")
     parser.add_argument("--project", default="barq-assessment", help="Compose project label to target")
     parser.add_argument("--service", default="app-01", help="application service to stop")
-    parser.add_argument("--url", default="http://127.0.0.1:8080", help="public loopback URL")
+    parser.add_argument("--url", default="http://127.0.0.1:8090", help="public loopback URL")
     parser.add_argument("--requests", type=int, default=60, help="requests to send during the failure")
     parser.add_argument("--recovery-timeout", type=int, default=45, help="seconds to wait for healthy recovery")
     return parser.parse_args()

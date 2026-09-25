@@ -214,7 +214,7 @@ def validate_http(base_url: str, apps: set[str]) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate a running BARQ Compose project")
     parser.add_argument("--project", default="barq-assessment", help="Compose project label to inspect")
-    parser.add_argument("--url", default="http://127.0.0.1:8080", help="public loopback URL")
+    parser.add_argument("--url", default="http://127.0.0.1:8090", help="public loopback URL")
     return parser.parse_args()
 
 

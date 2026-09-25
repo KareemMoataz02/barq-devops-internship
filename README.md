@@ -3,20 +3,16 @@
 # BARQ DevOps internship assessment
 
 This repository repairs and validates the supplied Flask, NGINX, PostgreSQL, and Redis
-environment. NGINX is the only published service and balances requests between two
-application replicas. The applications use real PostgreSQL records and a Redis counter.
-
-The current repository is intentionally in its **pre-recording state**: `app-01` and
-`app-02` serve through `http://127.0.0.1:8080`. During the required continuous video, the
-one-time challenge will introduce a runtime fault, the public port will change to 8090,
-and `app-03` will be added live. The README, diagram, and evidence index must then be
-updated to match that final state.
+environment. NGINX is the only published service and balances requests across three
+application replicas. The final recorded change added `app-03`, and all replicas now serve
+through `http://127.0.0.1:8090`. The applications use real PostgreSQL records and a Redis
+counter.
 
 ## Architecture
 
 ![BARQ service architecture](architecture.png)
 
-Requests enter through loopback port 8080 and reach NGINX on container port 80. NGINX and
+Requests enter through loopback port 8090 and reach NGINX on container port 80. NGINX and
 the application replicas share the frontend network. The applications also join the
 internal backend network to reach PostgreSQL on 5432 and Redis on 6379. Neither the
 applications nor the data services publish host ports.
@@ -29,8 +25,8 @@ choices and limitations are in [decisions.md](decisions.md), and security findin
 
 - Linux or WSL2 with Git, Python 3.12, Docker Engine, and the Docker Compose plugin
 - At least 2 CPU cores, 4 GB free RAM, and 3 GB free disk space
-- Free host port 8080 before the video and 8090 for the live change
-- No existing containers named `app-01`, `app-02`, `nginx`, `postgres`, or `redis`
+- Free host port 8090
+- No existing containers named `app-01`, `app-02`, `app-03`, `nginx`, `postgres`, or `redis`
 
 Use synthetic data and a local machine only. The public port is bound to loopback and is
 not intended for internet exposure.
@@ -45,7 +41,7 @@ cp .env.example .env
 sed -i "s/change-me/$(python3 -c 'import secrets; print(secrets.token_hex(24))')/" .env
 
 export BARQ_PROJECT=barq-assessment
-export BARQ_URL=http://127.0.0.1:8080
+export BARQ_URL=http://127.0.0.1:8090
 ```
 
 Confirm that the environment file is ignored and the resolved Compose configuration is
@@ -71,11 +67,11 @@ docker compose --env-file .env -p "$BARQ_PROJECT" \
 docker compose --env-file .env -p "$BARQ_PROJECT" ps
 ```
 
-Expected services are `nginx`, `app-01`, `app-02`, `postgres`, and `redis`; all five
+Expected services are `nginx`, `app-01`, `app-02`, `app-03`, `postgres`, and `redis`; all six
 should report healthy. Only NGINX should show a host binding:
 
 ```text
-127.0.0.1:8080->80/tcp
+127.0.0.1:8090->80/tcp
 ```
 
 ## Exercise the API
@@ -159,8 +155,10 @@ container in a cleanup path, waits for health, and proves it serves traffic agai
 
 Some errors are expected. NGINX retries are deliberately disabled so this exercise exposes
 the availability of the configured round-robin design instead of hiding the stopped
-replica. The measured local run produced 29 successes and 31 HTTP 504 responses, followed
-by successful recovery. Run `validate.py` again afterward.
+replica. The recorded two-replica run produced 29 successes and 31 HTTP 504 responses.
+After the final third replica was added, a 12-request verification produced 8 successes
+and 4 HTTP 504 responses, followed by successful recovery. Run `validate.py` again
+afterward.
 
 ## Prove persistence across container recreation
 
@@ -177,7 +175,7 @@ curl --fail --silent --show-error \
 
 docker compose --env-file .env -p "$BARQ_PROJECT" \
   up --detach --force-recreate --wait --wait-timeout 90 \
-  postgres app-01 app-02 nginx
+  postgres app-01 app-02 app-03 nginx
 
 curl --fail --silent --show-error "$BARQ_URL/records" \
   | python3 -c 'import json,sys; marker=sys.argv[1]; records=json.load(sys.stdin)["records"]; assert any(row["title"] == marker for row in records); print("PASS:", marker, "survived recreation")' \
@@ -284,24 +282,19 @@ or backup durability. CI runs are available in the repository's **Actions** tab.
   retry behavior, restart policy, resource limits, storage, secrets, and validation design.
 - [security_review.md](security_review.md) separates implemented controls from the work
   needed for production.
-- [docs/EVIDENCE_INDEX.md](docs/EVIDENCE_INDEX.md) will map each final requirement to its
+- [docs/EVIDENCE_INDEX.md](docs/EVIDENCE_INDEX.md) maps each final requirement to its
   file, commit, CI evidence, and video timestamp.
-- [AI_USAGE.md](AI_USAGE.md) will disclose assisted work and how each result was checked.
+- [AI_USAGE.md](AI_USAGE.md) discloses assisted work and how each result was checked.
 
-## Recorded challenge: run only during the video
+## Recorded challenge
 
-Do not run `video_challenge.sh` while preparing or rehearsing. It must run once, for the
-first time in the continuous 12-18 minute recording, after the stopped pre-recording
-environment has been built and started on screen:
+The supplied challenge was run during the continuous recording after the stopped
+environment was built and started. It created receipt
+`a87d877c79d443489d22243349551007`; the fault was diagnosed and repaired without a
+full-stack reset. The receipt remains local under `.assessment/` because assessment state
+is intentionally ignored by Git.
 
-```bash
-./video_challenge.sh
-```
-
-The script performs preflight checks, creates a one-run receipt at
-`.assessment/challenge.json`, and introduces a runtime fault to diagnose live. Do not reset
-the challenge with `docker compose down`, and do not delete its one-run marker to retry.
-After repairing the fault, change the public port from 8080 to 8090, add `app-03`, prove all
-three identities through NGINX, rerun validation, review the diff, commit, and push on
-screen. The final GitHub code, README, architecture diagram, evidence index, CI run, and
-video must all match that three-instance port-8090 state.
+The recording then changes the public endpoint from 8080 to 8090, adds `app-03`, proves the
+final identities through NGINX, reruns validation, reviews the diff, commits, and pushes
+the live change. Exact timestamps are indexed in
+[docs/EVIDENCE_INDEX.md](docs/EVIDENCE_INDEX.md).

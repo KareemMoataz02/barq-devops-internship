@@ -134,13 +134,14 @@ work and is not presented as complete.
   application events, and confirm secrets and request bodies are absent. Trigger a safe
   dependency failure in staging and verify the dashboard, alert, and runbook link.
 
-## 7. Health checks and two replicas improve recovery, but major single points remain
+## 7. Health checks and three replicas improve recovery, but major single points remain
 
-- **Risk and evidence:** Both application replicas have health checks and NGINX waits for
-  them at startup. Every service uses `restart: unless-stopped`. The automated failure test
+- **Risk and evidence:** All three application replicas have health checks and NGINX waits
+  for them at startup. Every service uses `restart: unless-stopped`. The automated failure test
   safely stops one labelled application container, measures the public result, restores
   the same container, and proves it serves again. With proxy retries intentionally disabled,
-  the observed one-replica outage produced about 50% failed requests. NGINX, PostgreSQL,
+  the recorded two-replica baseline produced about 50% failed requests during a one-replica
+  outage. The final topology adds a third replica. NGINX, PostgreSQL,
   Redis, the Docker daemon, and the host each remain a single point of failure.
 - **Impact:** Process crashes can recover automatically, but losing any singleton or the
   host can interrupt all requests. Keeping a stopped upstream in round-robin rotation

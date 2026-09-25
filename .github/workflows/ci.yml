@@ -19,7 +19,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: barq-assessment
       POSTGRES_PASSWORD: ci-only-synthetic-password
-      PUBLIC_PORT: "8080"
+      PUBLIC_PORT: "8090"
 
     steps:
       - name: Check out repository

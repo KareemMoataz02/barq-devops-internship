@@ -559,5 +559,9 @@ ls -lZ nginx/nginx.conf database/init.sql
   the application contract, and passes runtime topology/dependency validation on a
   clean runner. It does not prove production capacity, long-duration reliability,
   backup retention, or the recorded challenge.
-- Hosted-run status: pending the first push of this workflow.
+- First hosted run: GitHub Actions run 36105408332 passed all steps in 50 seconds,
+  including full health waiting, end-to-end validation, and cleanup. GitHub warned
+  that checkout v4's Node 20 runtime was deprecated. The workflow now pins the exact
+  commit for the official current checkout v7.0.1 release instead of using a mutable
+  major-version reference.
 - Related commit: `ci: build and validate the complete environment`.

@@ -68,7 +68,8 @@ python -m unittest discover -s tests -v
   Placeholders deliberately exit 2; they are unfinished deliverables, not validation evidence.
 - Create .github/workflows/ci.yml yourself.
 - Complete the root report templates and docs/EVIDENCE_INDEX.md.
-- Add architecture.png or architecture.pdf.
+- Review [architecture.png](architecture.png); the editable source is
+  [architecture.excalidraw](architecture.excalidraw).
 - Replace this README with copyable setup/build/run/test/failure/backup/restore/cleanup commands.
 - Commit as you work. Do not commit real secrets, backups, virtual environments or challenge state.
 

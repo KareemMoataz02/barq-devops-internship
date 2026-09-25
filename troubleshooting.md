@@ -490,3 +490,46 @@ ls -lZ nginx/nginx.conf database/init.sql
 - Failed repair attempts: none. The observed 502/504 responses are the measured
   behavior of the configured no-retry proxy, not a test failure.
 - Related commit: `test: automate backend failure and recovery`.
+
+## 2026-09-25 — create and prove a real PostgreSQL backup restore
+
+- Deliverables: replace `backup.sh` and `restore.sh` placeholders with scripts that
+  locate PostgreSQL by exact Compose project/service labels, require a running healthy
+  container, use bounded Docker operations, and never place database credentials in
+  the host command line.
+- Backup behavior: run `pg_dump` in custom format inside the container, omit ownership
+  and privilege metadata, validate the archive with `pg_restore --list`, copy through
+  temporary paths, set host permissions to `0600`, and atomically move the completed
+  archive to its requested path. Backups remain ignored by Git.
+- Restore behavior: require an explicit readable non-empty file, validate it before
+  changing the database, then use `pg_restore --clean --if-exists --exit-on-error`
+  in one transaction. Verify the restored `records` table with a real SQL count.
+- Proof sequence and commands:
+
+```bash
+# POST /records with title backup-restore-proof-20260925-a91f
+./backup.sh --project barq-guided \
+  --output backups/restore-proof-20260925-a91f.dump
+# POST /records with title post-backup-only-20260925-a91f
+./restore.sh --project barq-guided \
+  --input backups/restore-proof-20260925-a91f.dump
+```
+
+- Before the dump, the API created backup marker ID 6. After the dump, it created
+  post-backup marker ID 7. The custom archive was 2,361 bytes with SHA-256
+  `ce1a7653650d0d91a5afa1861a118748d9d6a982247573490b627fed134d56eb`.
+- Actual restore result: exit 0 and six rows restored. The API then returned the
+  backup marker, did not return the post-backup marker, and reported both dependencies
+  ready. This proves the records came from the archive rather than the current volume.
+- Post-restore proof: the complete validation script passed; all five containers were
+  healthy and both application replicas served public traffic.
+- Negative-path proof: running restore without `--input` exited 1 before container
+  selection or database changes.
+- Failed validation attempt: the first ShellCheck run returned SC2016 because it
+  cannot infer that three single-quoted variable references must expand inside the
+  PostgreSQL container. Inline suppressions now document that trust boundary; Bash
+  syntax and ShellCheck both pass.
+- Limitation: the lab restore runs against the live database and can briefly interrupt
+  API operations. A production restore should use a maintenance window or isolated
+  recovery database, access controls, encrypted storage, and retention management.
+- Related commit: `feat: add PostgreSQL backup and restore tooling`.

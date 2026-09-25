@@ -565,3 +565,29 @@ ls -lZ nginx/nginx.conf database/init.sql
   commit for the official current checkout v7.0.1 release instead of using a mutable
   major-version reference.
 - Related commit: `ci: build and validate the complete environment`.
+
+## 2026-09-25 — analyze the supplied historical logs
+
+- Source handling: keep all three supplied logs unchanged and record their SHA-256
+  hashes in `log_analysis.md`. Add `scripts/analyze_logs.py`, using only the Python
+  standard library, so file-quality counts, request outcomes, latency percentiles,
+  retries, and failure distributions can be reproduced with one command.
+- Counting finding: 1,524 physical lines do not mean 1,524 client requests. The files
+  include two malformed JSON lines, seven extra exact duplicate copies, 47 separate
+  dependency-error events, 67 NGINX error events, and retry attempts. The reliable
+  denominator is 720 unique access-log request IDs after exact deduplication.
+- Client result: 615 final 200, ten 404, 40 502, 47 503, and eight 504 responses.
+  The final 5xx rate is 95/720, or 13.19%. Median client time is 54 ms; nearest-rank
+  p95 is 2,001 ms across all final outcomes.
+- Correlated incidents: app-02 refused 59 connections, of which 19 recovered through
+  app-01 retry and 40 ended as 502; both apps reported 31 Redis timeouts and 16
+  PostgreSQL invalid-password errors; and eight `/records` requests exceeded the
+  proxy timeout before the apps completed successfully at 2.7 seconds.
+- Verification: targeted request-ID joins reproduce one final proxy failure, one
+  successful retry, one Redis 503, and one late application success after client 504.
+  Recovery boundaries are supported by the next successful request for the affected
+  backend or endpoint rather than inferred from the absence of later errors.
+- Failed analysis attempts: none affected the calculations. The first file-replacement
+  patch was rejected before changing `log_analysis.md`; applying it as one update
+  succeeded. No source log was written during analysis.
+- Related commit: `docs: analyze and correlate the supplied logs`.

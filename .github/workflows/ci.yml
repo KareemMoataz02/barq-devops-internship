@@ -27,7 +27,7 @@ jobs:
 
       - name: Check script and Compose syntax
         run: |
-          python3 -m py_compile validate.py failure_test.py
+          python3 -m py_compile validate.py failure_test.py scripts/analyze_logs.py
           bash -n backup.sh restore.sh video_challenge.sh
           docker compose config --quiet
 

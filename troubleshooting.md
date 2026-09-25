@@ -453,3 +453,40 @@ ls -lZ nginx/nginx.conf database/init.sql
   case-insensitive header rules and validates the returned correlation ID and matching
   instance identity. No service configuration was changed for this script defect.
 - Related commit: `feat: add end-to-end environment validation`.
+
+## 2026-09-25 — measure one-backend failure and recovery
+
+- Deliverable: replace the `failure_test.py` placeholder with a bounded test that
+  selects one application container by exact Compose project and service labels.
+  The default target is app-01, and only an `app-NN` service on an HTTP loopback URL
+  is accepted.
+- Safety behavior: require a healthy target and healthy public endpoint before the
+  fault; mark restoration as required before stopping the container; and use a
+  `finally` block to start it and wait for Docker health even when measurement fails
+  or the test is interrupted. No network, volume, or unrelated container is changed.
+- Failure behavior: stop app-01 and send 60 concurrent `/instance` requests through
+  NGINX. Require both successful requests and proxy errors, and reject any response
+  claiming to come from the stopped replica. NGINX intentionally has upstream retry
+  disabled, so the errors expose the current availability limitation.
+- Recovery behavior: start the same container ID, wait up to 45 seconds for healthy
+  state, and sample public traffic until app-01 itself responds.
+- Validation command:
+
+```bash
+./failure_test.py --project barq-guided --service app-01 \
+  --url http://127.0.0.1:8080 --requests 60
+```
+
+- Actual retest: exit 0. During the 8.01-second fault sample, 29 requests succeeded
+  through app-02 and 31 returned HTTP 504, for 48.3% measured availability. App-01
+  restarted, became healthy, and then served a public request.
+- Post-test proof: the complete `validate.py` check passed immediately afterward;
+  all five containers were healthy and both app identities served traffic.
+- Adjustment after the first successful run: sequential requests took about one
+  minute because each failed selection waited for the upstream timeout. Running ten
+  bounded requests concurrently preserves the same observable fault while reducing
+  the demonstration to eight seconds and reporting duration and availability.
+- Negative-path proof: a non-loopback HTTPS URL exits 1 before container selection.
+- Failed repair attempts: none. The observed 502/504 responses are the measured
+  behavior of the configured no-retry proxy, not a test failure.
+- Related commit: `test: automate backend failure and recovery`.

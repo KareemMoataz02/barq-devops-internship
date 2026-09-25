@@ -419,3 +419,37 @@ ls -lZ nginx/nginx.conf database/init.sql
   ready, and the PostgreSQL persistence marker remained present after recreation.
 - Failed repair attempts: none in this step.
 - Related commit: `reliability: set container resource limits`.
+
+## 2026-09-25 — add end-to-end environment validation
+
+- Deliverable: replace the `validate.py` placeholder with a bounded Python preflight
+  that uses only the standard library and the Docker CLI. It accepts an explicit
+  Compose project and loopback URL so the guided environment can be tested without
+  selecting unrelated containers by name.
+- Runtime checks: discover services using Compose labels; require all containers to
+  be running and healthy; verify NGINX, application, PostgreSQL, and Redis network
+  membership; require the backend network to be internal; and prove that only NGINX
+  publishes the expected loopback port.
+- Application checks: call `/`, `/health`, `/ready`, `/instance`, `/records`, and
+  `/counter`; create and list a uniquely named PostgreSQL record; verify the Redis
+  counter advances by one; validate response correlation and instance headers; and
+  sample the load balancer until every discovered application replica responds.
+- The record creation and two counter requests are intentional test data mutations.
+  The script never stops, recreates, or removes a container, network, or volume.
+- Validation command:
+
+```bash
+./validate.py --project barq-guided --url http://127.0.0.1:8080
+```
+
+- Actual result: exit 0. Compose syntax passed; all five containers were healthy;
+  the frontend/internal-backend topology and port isolation passed; every public
+  endpoint and both dependencies worked; and traffic reached app-01 and app-02.
+- Negative-path proof: an HTTPS non-loopback URL was rejected immediately with exit
+  1 before Docker or the endpoint checks ran.
+- Failed validation attempts: the first live run compared HTTP header names with
+  case-sensitive spelling, then revealed that NGINX generates the public request ID
+  instead of preserving a caller-supplied value. The script now applies HTTP's
+  case-insensitive header rules and validates the returned correlation ID and matching
+  instance identity. No service configuration was changed for this script defect.
+- Related commit: `feat: add end-to-end environment validation`.

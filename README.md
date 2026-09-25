@@ -1,98 +1,307 @@
 <img src="assets/barq-logo.svg" alt="BARQ Systems" width="180">
 
-# DevOps Internship Task - Starter v2
+# BARQ DevOps internship assessment
 
-**Due date:** ____________________
+This repository repairs and validates the supplied Flask, NGINX, PostgreSQL, and Redis
+environment. NGINX is the only published service and balances requests between two
+application replicas. The applications use real PostgreSQL records and a Redis counter.
 
-**Time window:** 4 calendar days from the invitation email date/time.
+The current repository is intentionally in its **pre-recording state**: `app-01` and
+`app-02` serve through `http://127.0.0.1:8080`. During the required continuous video, the
+one-time challenge will introduce a runtime fault, the public port will change to 8090,
+and `app-03` will be added live. The README, diagram, and evidence index must then be
+updated to match that final state.
 
-Read [the task](assessment/TASK.md), then [the API contract](assessment/APPLICATION.md).
-Everyone receives this same release. The environment is intentionally broken.
-Hidden issue types and count are not disclosed. Investigate this project; do not replace it.
+## Architecture
 
-## Included
+![BARQ service architecture](architecture.png)
 
-- Flask API, PostgreSQL, Redis, Docker and NGINX starter files.
-- Three historical logs, a question template and documentation templates.
-- App-only tests and a recorded challenge script.
-- Unimplemented validation, failure-test and backup/restore placeholders.
+Requests enter through loopback port 8080 and reach NGINX on container port 80. NGINX and
+the application replicas share the frontend network. The applications also join the
+internal backend network to reach PostgreSQL on 5432 and Redis on 6379. Neither the
+applications nor the data services publish host ports.
 
-Use synthetic lab accounts/data only. Supplied values are for this disposable exercise,
-never for real services. Keep the lab on your local machine; do not expose it publicly.
+The editable diagram is [architecture.excalidraw](architecture.excalidraw). Detailed
+choices and limitations are in [decisions.md](decisions.md), and security findings are in
+[security_review.md](security_review.md).
 
-## Before you start
+## Prerequisites
 
-- Linux or WSL2, Python 3.12, Git and Docker with Compose.
-- Docker Desktop must use Linux containers. Run shell scripts in Linux/WSL.
-- Suggested capacity: 2 CPU cores, 4 GB free RAM and 3 GB free disk, plus Docker overhead.
-- Internet for first downloads and GitHub. No cloud account or paid registry required.
-- Use a machine where container names app-01, app-02, nginx, postgres and redis are unused.
-  Do not delete someone else's containers to free those names.
-- Intended public port: 8080 before the video, 8090 after the live change.
-  If either is occupied, ask the organizer for a documented workstation exception.
+- Linux or WSL2 with Git, Python 3.12, Docker Engine, and the Docker Compose plugin
+- At least 2 CPU cores, 4 GB free RAM, and 3 GB free disk space
+- Free host port 8080 before the video and 8090 for the live change
+- No existing containers named `app-01`, `app-02`, `nginx`, `postgres`, or `redis`
 
-## Start
+Use synthetic data and a local machine only. The public port is bound to loopback and is
+not intended for internet exposure.
 
-Clone the supplied Git bundle/repository. Keep both release commits and the v2 baseline tag.
-Set your own Git name/email before making changes.
+## Setup and configure the environment
 
-From the repository root:
+Run all commands from the repository root. Create a local ignored environment file and
+replace its placeholder with a generated lab password:
 
 ```bash
-git status
-git log -2 --oneline
 cp .env.example .env
-docker version
-docker compose version
-docker compose -p barq-assessment up --build -d
-docker compose -p barq-assessment ps -a
-docker compose -p barq-assessment logs --no-color
+sed -i "s/change-me/$(python3 -c 'import secrets; print(secrets.token_hex(24))')/" .env
+
+export BARQ_PROJECT=barq-assessment
+export BARQ_URL=http://127.0.0.1:8080
 ```
 
-The initial environment is not expected to pass. Record what actually happens.
-The intended URL is http://127.0.0.1:8080; do not assume the starter configuration is correct.
-
-App-only checks use fake dependencies, not real SQL/Redis or Docker networking:
+Confirm that the environment file is ignored and the resolved Compose configuration is
+valid:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-python -m unittest discover -s tests -v
+git check-ignore .env
+docker compose --env-file .env -p "$BARQ_PROJECT" config --quiet
 ```
 
-## Your work
+Compose stops immediately when `POSTGRES_PASSWORD` is absent. `.env.example` contains
+only a disposable placeholder; do not commit `.env` or a real credential.
 
-- Complete [assessment/TASK.md](assessment/TASK.md).
-- Implement validate.py, failure_test.py, backup.sh and restore.sh, or documented equivalents.
-  Placeholders deliberately exit 2; they are unfinished deliverables, not validation evidence.
-- Create .github/workflows/ci.yml yourself.
-- Complete the root report templates and docs/EVIDENCE_INDEX.md.
-- Review [architecture.png](architecture.png); the editable source is
-  [architecture.excalidraw](architecture.excalidraw).
-- Replace this README with copyable setup/build/run/test/failure/backup/restore/cleanup commands.
-- Commit as you work. Do not commit real secrets, backups, virtual environments or challenge state.
+## Build and start
 
-## Recorded challenge
+Build the application image, start the complete environment, and wait up to 90 seconds
+for every health check:
 
-Use the supplied video_challenge.sh unchanged. Read its code if needed; do not run it early.
-After repairing the environment, run it once, for the first time in the video working copy,
-during the continuous 12-18 minute recording. The script requires healthy services, both
-initial instances and the target network layout. Preflight failures make no runtime changes.
+```bash
+docker compose --env-file .env -p "$BARQ_PROJECT" build
+docker compose --env-file .env -p "$BARQ_PROJECT" \
+  up --detach --wait --wait-timeout 90
+docker compose --env-file .env -p "$BARQ_PROJECT" ps
+```
+
+Expected services are `nginx`, `app-01`, `app-02`, `postgres`, and `redis`; all five
+should report healthy. Only NGINX should show a host binding:
+
+```text
+127.0.0.1:8080->80/tcp
+```
+
+## Exercise the API
+
+The endpoints return JSON and identify the application replica in the `instance_id` field
+and `X-Instance-ID` response header.
+
+```bash
+curl --fail --silent --show-error "$BARQ_URL/" | python3 -m json.tool
+curl --fail --silent --show-error "$BARQ_URL/health" | python3 -m json.tool
+curl --fail --silent --show-error "$BARQ_URL/ready" | python3 -m json.tool
+curl --fail --silent --show-error "$BARQ_URL/records" | python3 -m json.tool
+curl --fail --silent --show-error "$BARQ_URL/counter" | python3 -m json.tool
+```
+
+Create a synthetic PostgreSQL record:
+
+```bash
+curl --fail --silent --show-error \
+  --header 'Content-Type: application/json' \
+  --data '{"title":"README verification record"}' \
+  "$BARQ_URL/records" | python3 -m json.tool
+```
+
+Prove that round-robin traffic reaches both replicas:
+
+```bash
+for request in $(seq 1 10); do
+  curl --fail --silent --show-error "$BARQ_URL/instance"
+  echo
+done
+```
+
+`/health` proves that the application process can answer HTTP. `/ready` separately checks
+live PostgreSQL and Redis operations and returns HTTP 503 when either dependency is
+unavailable.
+
+## Run automated checks
+
+Run syntax checks first:
+
+```bash
+python3 -m py_compile validate.py failure_test.py scripts/analyze_logs.py
+bash -n backup.sh restore.sh video_challenge.sh
+docker compose --env-file .env -p "$BARQ_PROJECT" config --quiet
+```
+
+Run the application contract tests inside the same production image used by Compose:
+
+```bash
+docker compose --env-file .env -p "$BARQ_PROJECT" run --rm --no-deps \
+  --volume "$PWD/tests:/srv/tests:ro,Z" \
+  app-01 python -m unittest discover -s tests -v
+```
+
+Run the full environment validator:
+
+```bash
+./validate.py --project "$BARQ_PROJECT" --url "$BARQ_URL"
+```
+
+Validation exits non-zero when Compose syntax is invalid; a required container is missing,
+stopped, or unhealthy; network isolation is wrong; a prohibited port is published; an
+endpoint violates its contract; a real PostgreSQL or Redis operation fails; or not every
+application replica serves through NGINX. Validation is read-only for infrastructure but
+creates one synthetic database record and increments the Redis counter.
+
+## Measure failure and recovery
+
+The failure test stops exactly one container selected by Compose project and service
+labels, sends 60 concurrent requests, measures successes and errors, restarts that same
+container in a cleanup path, waits for health, and proves it serves traffic again:
+
+```bash
+./failure_test.py \
+  --project "$BARQ_PROJECT" \
+  --service app-01 \
+  --url "$BARQ_URL" \
+  --requests 60
+```
+
+Some errors are expected. NGINX retries are deliberately disabled so this exercise exposes
+the availability of the configured round-robin design instead of hiding the stopped
+replica. The measured local run produced 29 successes and 31 HTTP 504 responses, followed
+by successful recovery. Run `validate.py` again afterward.
+
+## Prove persistence across container recreation
+
+Create a unique record, force-recreate the application and PostgreSQL containers without
+deleting volumes, and confirm the record remains. NGINX is recreated in the same command
+so it resolves the replacement application containers:
+
+```bash
+marker="persistence-$(date -u +%Y%m%dT%H%M%SZ)"
+curl --fail --silent --show-error \
+  --header 'Content-Type: application/json' \
+  --data "{\"title\":\"$marker\"}" \
+  "$BARQ_URL/records" | python3 -m json.tool
+
+docker compose --env-file .env -p "$BARQ_PROJECT" \
+  up --detach --force-recreate --wait --wait-timeout 90 \
+  postgres app-01 app-02 nginx
+
+curl --fail --silent --show-error "$BARQ_URL/records" \
+  | python3 -c 'import json,sys; marker=sys.argv[1]; records=json.load(sys.stdin)["records"]; assert any(row["title"] == marker for row in records); print("PASS:", marker, "survived recreation")' \
+  "$marker"
+```
+
+This preserves the `postgres-data` named volume. Do not add `--volumes` to these commands.
+
+## Back up and restore PostgreSQL
+
+Create a validated custom-format dump. The script targets one healthy PostgreSQL container
+using exact Compose labels, writes through a temporary file, sets mode 0600, and reports a
+SHA-256 checksum:
+
+```bash
+mkdir -p backups
+./backup.sh \
+  --project "$BARQ_PROJECT" \
+  --output backups/manual-proof.dump
+```
+
+Restore is destructive to database objects represented in the dump. The script validates
+the archive first, restores in one transaction with exit-on-error behavior, and verifies
+the restored `records` table:
+
+```bash
+./restore.sh \
+  --project "$BARQ_PROJECT" \
+  --input backups/manual-proof.dump
+
+./validate.py --project "$BARQ_PROJECT" --url "$BARQ_URL"
+```
+
+Generated dumps are ignored by Git. The proven local drill and its limitations are recorded
+in [troubleshooting.md](troubleshooting.md). Local dumps and named volumes are not a
+production backup strategy.
+
+## Inspect logs and service state
+
+```bash
+docker compose --env-file .env -p "$BARQ_PROJECT" ps --all
+docker compose --env-file .env -p "$BARQ_PROJECT" logs \
+  --no-color --timestamps --tail 200
+```
+
+NGINX and the application emit structured request IDs, instance identities, statuses, and
+latency fields. The supplied historical logs are analyzed in [log_analysis.md](log_analysis.md),
+including malformed-line handling, exact-line deduplication, incident timelines, retry
+correlation, and latency calculations. Reproduce its counts with:
+
+```bash
+./scripts/analyze_logs.py
+```
+
+The original supplied log files remain unchanged.
+
+## Stop and clean up
+
+Stop and remove the lab containers and networks while preserving PostgreSQL and Redis
+volumes:
+
+```bash
+docker compose --env-file .env -p "$BARQ_PROJECT" down --remove-orphans
+```
+
+To start again with the existing data:
+
+```bash
+docker compose --env-file .env -p "$BARQ_PROJECT" \
+  up --detach --wait --wait-timeout 90
+```
+
+After taking any required backup, permanently remove this project's containers, networks,
+and named volumes:
+
+```bash
+docker compose --env-file .env -p "$BARQ_PROJECT" \
+  down --volumes --remove-orphans
+rm -f .env backups/*.dump
+```
+
+The last operation deletes the lab's persisted PostgreSQL and Redis data. It does not use
+global Docker prune commands and does not target unrelated projects.
+
+## Continuous integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs for pushes and pull requests
+with read-only repository permissions and a 15-minute limit. It checks syntax, resolves
+Compose, builds the application image, runs contract tests, starts the full environment,
+waits for health, runs end-to-end validation, prints diagnostics on failure, and always
+cleans up.
+
+A green run proves those checks passed from a clean Ubuntu runner for that exact commit. It
+does not prove production capacity, long-duration reliability, absence of vulnerabilities,
+or backup durability. CI runs are available in the repository's **Actions** tab.
+
+## Investigation and reports
+
+- [troubleshooting.md](troubleshooting.md) records the initial failures, hypotheses, fixes,
+  failed attempts, exact retests, and commit evidence.
+- [log_analysis.md](log_analysis.md) answers every supplied log question with reproducible
+  counts and cross-layer correlations.
+- [decisions.md](decisions.md) explains the base image, health checks, networks, timeouts,
+  retry behavior, restart policy, resource limits, storage, secrets, and validation design.
+- [security_review.md](security_review.md) separates implemented controls from the work
+  needed for production.
+- [docs/EVIDENCE_INDEX.md](docs/EVIDENCE_INDEX.md) will map each final requirement to its
+  file, commit, CI evidence, and video timestamp.
+- [AI_USAGE.md](AI_USAGE.md) will disclose assisted work and how each result was checked.
+
+## Recorded challenge: run only during the video
+
+Do not run `video_challenge.sh` while preparing or rehearsing. It must run once, for the
+first time in the continuous 12-18 minute recording, after the stopped pre-recording
+environment has been built and started on screen:
 
 ```bash
 ./video_challenge.sh
 ```
 
-If you deliberately changed the project name, pass --project YOUR_PROJECT.
-An organizer-approved alternate local URL can be passed with --url http://127.0.0.1:PORT.
-The script touches only matching Compose-owned lab containers/networks.
-Keep the receipt in .assessment/challenge.json for the evidence index. Do not delete the
-one-run marker to retry. A local marker is not tamper-proof; ownership is judged from evidence.
-Do not use docker compose down to reset the runtime challenge.
-
-## Stop safely
-
-Outside the recorded challenge, docker compose -p barq-assessment down stops this lab.
-Do not use --volumes during persistence tests. Avoid global Docker prune/cleanup commands.
-Back up anything you need before removing containers; investigate whether data actually persists.
+The script performs preflight checks, creates a one-run receipt at
+`.assessment/challenge.json`, and introduces a runtime fault to diagnose live. Do not reset
+the challenge with `docker compose down`, and do not delete its one-run marker to retry.
+After repairing the fault, change the public port from 8080 to 8090, add `app-03`, prove all
+three identities through NGINX, rerun validation, review the diff, commit, and push on
+screen. The final GitHub code, README, architecture diagram, evidence index, CI run, and
+video must all match that three-instance port-8090 state.

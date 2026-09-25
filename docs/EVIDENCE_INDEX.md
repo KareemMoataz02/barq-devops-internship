@@ -16,7 +16,8 @@ requirements. Times refer to `BARQ_DevOps_Assessment_Kareem_Moataz.mp4` and use 
 - **Recording SHA-256:** `94aca69c60c2b5dae8e97c72c191e6e42b6feade4bd980c2a4f1c54fab320637`
 - **Recording duration:** `42:33`
 - **Shareable video:** [Google Drive recording](https://drive.google.com/file/d/1vXExEQTZk6CbymfLWH4bfZV0bF5EmLad/view?usp=sharing)
-- **Final documentation commit and CI:** **Add after reviewing and pushing the final diff.**
+- **Final implementation and documentation commit:** [`d184374`](https://github.com/KareemMoataz02/barq-devops-internship/commit/d184374)
+- **Matching final CI:** [GitHub Actions run 36186385599](https://github.com/KareemMoataz02/barq-devops-internship/actions/runs/36186385599)
 
 The recording is continuous and unedited, but its 42:33 duration exceeds the requested
 12–18 minute range. This deviation is recorded here rather than hidden.
@@ -70,5 +71,5 @@ The recording is continuous and unedited, but its 42:33 duration exceeds the req
 | Architecture diagram | [architecture.png](../architecture.png) and editable [architecture.excalidraw](../architecture.excalidraw) |
 | AI disclosure | [AI_USAGE.md](../AI_USAGE.md) |
 
-Before submission, replace the remaining bold placeholder above with the final
-documentation commit and CI link.
+The later evidence-link commit changes only this index to record the already completed
+final commit and successful CI run.

@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Build and validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      COMPOSE_PROJECT_NAME: barq-assessment
+      POSTGRES_PASSWORD: ci-only-synthetic-password
+      PUBLIC_PORT: "8080"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check script and Compose syntax
+        run: |
+          python3 -m py_compile validate.py failure_test.py
+          bash -n backup.sh restore.sh video_challenge.sh
+          docker compose config --quiet
+
+      - name: Build application images
+        run: docker compose build
+
+      - name: Run application contract tests
+        run: |
+          docker compose run --rm --no-deps \
+            --volume "$PWD/tests:/srv/tests:ro,Z" \
+            app-01 python -m unittest discover -s tests -v
+
+      - name: Start environment and wait for health
+        run: docker compose up --detach --wait --wait-timeout 90
+
+      - name: Run end-to-end validation
+        run: |
+          ./validate.py \
+            --project "$COMPOSE_PROJECT_NAME" \
+            --url "http://127.0.0.1:$PUBLIC_PORT"
+
+      - name: Show service state and logs on failure
+        if: failure()
+        run: |
+          docker compose ps --all
+          docker compose logs --no-color --timestamps
+
+      - name: Clean up environment
+        if: always()
+        run: docker compose down --volumes --remove-orphans

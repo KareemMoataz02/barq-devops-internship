@@ -533,3 +533,31 @@ ls -lZ nginx/nginx.conf database/init.sql
   API operations. A production restore should use a maintenance window or isolated
   recovery database, access controls, encrypted storage, and retention management.
 - Related commit: `feat: add PostgreSQL backup and restore tooling`.
+
+## 2026-09-25 — add continuous integration
+
+- Deliverable: add `.github/workflows/ci.yml` for every push and pull request, with
+  read-only repository permissions, a 15-minute job timeout, and concurrency that
+  cancels superseded runs on the same ref.
+- Ordered pipeline: checkout; Python, Bash, and Compose syntax checks; Compose image
+  build; eight application contract tests inside the built non-root image; full stack
+  startup with a 90-second health wait; and `validate.py` against port 8080.
+- CI uses a clearly synthetic job-only PostgreSQL password. It is not written to the
+  repository, image, or logs. The hosted runner is isolated, so its cleanup step may
+  remove the CI project's containers and volumes without targeting developer data.
+- Failure diagnostics print the Compose service table and timestamped logs. Cleanup
+  runs regardless of success or failure. The protected one-time video challenge is
+  checked for shell syntax but is never executed by CI.
+- Local validation: Python compilation, Bash parsing, Compose rendering, and the
+  image-backed contract suite passed. All eight contract tests completed successfully
+  in 0.164 seconds using the production image and a read-only test mount.
+- Failed validation attempt: the first local container test mount used `:ro` and the
+  non-root UID could not read it on this SELinux host. Changing only the test mount to
+  `:ro,Z` supplied the container label while retaining read-only access; the same
+  command then passed. Docker accepts this option on the hosted Linux runner.
+- Scope: green CI proves the committed environment builds, reaches health, satisfies
+  the application contract, and passes runtime topology/dependency validation on a
+  clean runner. It does not prove production capacity, long-duration reliability,
+  backup retention, or the recorded challenge.
+- Hosted-run status: pending the first push of this workflow.
+- Related commit: `ci: build and validate the complete environment`.
